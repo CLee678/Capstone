@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Playa de Ponce</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.0.3/dist/leaflet.css"/>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>        
+    html { height:100%;}
+    body {
+        height:100%;
+        padding: 0;
+        margin: 0;
+    }
+
+    #map {
+        width: 100%;
+        margin: 0 auto;
+        height: 100%;
+    }
+
+    .info {             /* Style of title box */
+        z-index: 1000;
+        position: absolute;
+        top: 3%;
+        left: 5%; 
+        padding: 10px 15px;
+        font: 14px Arial, Helvetica, sans-serif;
+        text-align: center;
+        background: white;
+        background: rgba(255, 255, 255, 0.8);
+        box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+        border-radius: 10px;
+    }
+
+    .info h1 {          /* Title wording */
+        font-size: 25px;
+        margin: 0 0 5px;
+        color: black;
+        font-weight: bold;
+    }
+
+    .infochart {        /* Style of the chart */
+        z-index: 1000;
+        position: absolute;
+        top: 4%;
+        right: 1%; 
+        padding: 12px 18px;
+        width: 400px;
+        font: 14px Arial, Helvetica, sans-serif;
+        text-align: center;
+        background: white;
+        background: rgba(255, 255, 255, 0.8);
+        box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+        border-radius: 10px;
+    }
+
+    .infochart h1 {     /* Tittle of the chart */
+        font-size: 18px;
+        margin: 0 0 5px;
+        color: black;
+    }
+
+    </style>
+</head>
+<body>
+    <div class="info">
+        <h1>Household Survey in Barrio Playa, Puerto Rico</h1>
+    </div>
+
+    <div id="chart-container" class="infochart" style="display: none;">
+        <h1>Relocation Willingness</h1>
+        <canvas id="perc-chart"></canvas>
+    </div>
+
+    <!-- Our web map and content will go here -->
+    <script src="https://unpkg.com/leaflet@1.0.3/dist/leaflet.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+    <div id="map"></div>
+    <script>
+        var map = L.map('map', { center: [17.985, -66.62], zoom: 14 });
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '© OpenStreetMap' }).addTo(map);
+        map.doubleClickZoom.disable();
+
+        // Global variables
+        var neighborhoodLayer;
+        var percChart;
+
+        // Load GeoJSON from an external file
+        $.getJSON("data/SurveyNeighborhoods.geojson", function (data) {
+            neighborhoodLayer = L.geoJson(data, {
+                style: styleFunc,
+                onEachFeature: onEachFeatureFunc
+            }).addTo(map);
+        });
+
+
+        function onEachFeatureFunc(chart, survey) {
+            survey.on({
+                mouseover: highlightFeature,
+                mouseout: resetHighlight,
+                click: function (e) {
+                    zoomFeature(e);
+                    showPercChartAndPopup(chart, survey);
+                }
+            });
+        }
+
+        function showPercChartAndPopup(chart, survey) {
+            var raceData = [
+                chart.properties.Perc_NotWi,
+                chart.properties.Perc_Willi,
+                chart.properties.Perc_Reloc
+            ];
+
+
+            // Update the popup content to include Neighborhood Name and Number of Surveys
+            survey.bindPopup(
+                'Neighborhood: ' + chart.properties.NOMBRE + '<br>' +
+                'The Number of Completed Surveys: ' + chart.properties.No_Surveys
+            ).openPopup();
+
+
+            // Update the chart
+            var chartContainer = document.getElementById('chart-container');
+            var percChartCanvas = document.getElementById('perc-chart');
+            chartContainer.style.display = 'block';
+
+            // Destroy the previous chart instance if it exists
+            if (percChart) {
+                percChart.destroy();
+            }
+
+            percChart = new Chart(percChartCanvas, {
+                type: 'bar',
+                data: {
+                    labels: ['No', 'Yes', 'Yes but within Barrio'],
+                    datasets: [{
+                        label: 'Percentage %',
+                        data: raceData,
+                        backgroundColor: [
+                            'rgba(54, 162, 235, 0.7)',
+                            'rgba(54, 162, 235, 0.7)',
+                            'rgba(54, 162, 235, 0.7)'
+                        ],
+                        borderColor: [
+                            'rgba(54, 162, 235, 0.7)',
+                            'rgba(54, 162, 235, 0.7)',
+                            'rgba(54, 162, 235, 0.7)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        function highlightFeature(e) {
+            var layer = e.target;
+
+            layer.setStyle({
+                weight: 5,
+                color: '#666',
+                dashArray: '',
+                fillOpacity: 0.7
+            });
+
+            // For different web browsers
+            if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) {
+                layer.bringToFront();
+            }
+        }
+
+        // Define what happens on mouseout
+        function resetHighlight(e) {
+            neighborhoodLayer.resetStyle(e.target);
+        }
+
+        // As an additional touch, let’s define a click listener that zooms to the state: 
+        function zoomFeature(e) {
+            console.log(e.target.getBounds());
+            map.fitBounds(e.target.getBounds().pad(1.5));
+        }
+
+        // Set style function that sets fill color property equal to census tract      
+        function styleFunc(feature) {
+            return {
+                fillColor: setColorFunc(feature.properties.NOMBRE),
+                fillOpacity: 0.9,
+                weight: 1,
+                opacity: 1,
+                color: '#f44336',
+                dashArray: '3'
+            };
+        }
+
+
+        function setColorFunc(name) {
+            switch(name) {
+                case 'AMALIA MARIN':
+                    return '#cfe2f3';
+                case 'LOS MEROS':
+                    return '#fff2cc';
+                case 'LOS POTES':
+                    return '#a2c4c9';
+                case 'PLAYA':
+                    return '#d9d2e9';
+                case 'PUERTO VIEJO':
+                    return '#8fce00';
+                case 'SALISTRAL / SECT PLAYA':
+                    return '#d9ead3';
+                case 'VILLA PESQUERA':
+                    return '#3d85c6';
+                case 'VILLA TABAIBA':
+                    return '#fddbc7';
+                case 'VISTAS DEL MAR':
+                    return '#ead1dc';
+                default:
+                    return '#ffffff'; // Default color if name does not match
+            }
+        }
+     
+
+        // Add Scale Bar to Map
+        L.control.scale({ position: 'bottomleft' }).addTo(map);
+
+
+    </script>
+</body>
+</html>
